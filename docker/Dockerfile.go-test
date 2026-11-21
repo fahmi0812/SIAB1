@@ -1,0 +1,19 @@
+# Local runner for the Go hot-path checks on workstations without a Go toolchain.
+# CI does not use this image; .github/workflows/production-hardening.yml runs the
+# same commands through actions/setup-go. Keep the Go version aligned with
+# go/go.mod and the workflow's go-version.
+#
+#   docker build --file docker/Dockerfile.go-test --tag siab1-go-test .
+#   docker run --rm siab1-go-test
+#
+FROM golang:1.25.0-alpine
+
+WORKDIR /src
+ENV GOPROXY=https://proxy.golang.org,direct \
+    GOTOOLCHAIN=local
+
+COPY go/go.mod go/go.sum ./
+RUN go mod download
+
+COPY go/ .
+CMD ["sh", "-c", "go test ./... && go vet ./..."]

@@ -1,0 +1,130 @@
+name: Production hardening checks
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - 'review/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-hardening-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      APP_ENV: test
+      SECRET_KEY: ci-only-placeholder
+      JWT_SECRET_KEY: ci-only-jwt-placeholder
+      GRAFANA_PASSWORD: ci-only-grafana-placeholder
+      DATABASE_URL: postgresql+asyncpg://examuser:exampassword@localhost:5432/siab1
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install Python dependencies
+        run: python -m pip install --requirement requirements.txt
+
+      - name: Audit declared dependencies
+        run: |
+          python -m pip_audit --requirement requirements.txt
+          python -m pip_audit --requirement requirements.runtime.lock
+
+      - name: Run hardening regression tests
+        run: >-
+          python -m pytest -q
+          tests/test_check_security_script.py
+          tests/test_p0_operational_hardening.py
+          tests/test_vps_capacity_preflight_readonly.py
+
+      - name: Run backend regression tests
+        run: python -m pytest -q tests
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.0'
+          cache-dependency-path: go/go.sum
+
+      - name: Validate native Go hot-path
+        working-directory: go
+        run: |
+          go test ./...
+          go vet ./...
+          go build -o "$RUNNER_TEMP/siab1-go-server" ./cmd/server
+
+      - name: Scan repository for committed secrets
+        run: |
+          go install github.com/zricethezav/gitleaks/v8@v8.30.1
+          "$(go env GOPATH)/bin/gitleaks" git --redact --no-banner --config .gitleaks.toml .
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Validate native Android kiosk
+        working-directory: android-kiosk
+        run: ./gradlew :app:lintDebug
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: '3.47.2'
+          channel: stable
+          cache: true
+
+      - name: Validate Flutter client
+        working-directory: flutter_client_code
+        run: |
+          flutter pub get --enforce-lockfile
+          flutter analyze
+          flutter test
+
+      - name: Install shell validation tools
+        run: sudo apt-get update && sudo apt-get install --yes shellcheck
+
+      - name: Validate shell scripts
+        run: |
+          bash -n \
+            bin/backup-comprehensive.sh \
+            bin/health-monitor.sh \
+            bin/restore.sh \
+            docker/docker-entrypoint.sh \
+            scripts/vps_capacity_snapshot_readonly.sh
+          shellcheck -S error \
+            bin/backup-comprehensive.sh \
+            bin/health-monitor.sh \
+            bin/restore.sh \
+            docker/docker-entrypoint.sh \
+            scripts/vps_capacity_snapshot_readonly.sh
+          python -m py_compile scripts/vps_capacity_preflight_readonly.py
+
+      - name: Validate Compose configuration
+        run: docker compose -f docker-compose.production.yml config --quiet
+
+      - name: Build production API image
+        run: docker build --file docker/Dockerfile.production --tag siab1-api:ci .
+
+      - name: Smoke production HTTP paths
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          BASE_URL: https://siab.man1rokanhulu.cloud
+        run: bash scripts/verify_critical_http_paths.sh

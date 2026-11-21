@@ -1,0 +1,19 @@
+.gradle/
+**/build/
+local.properties
+*.iml
+.idea/
+.cxx/
+# Eclipse / Buildship IDE state
+.project
+.classpath
+.settings/
+captures/
+*.apk
+*.aab
+*.ap_
+*.dex
+keystore.properties
+*.jks
+*.keystore
+gradle/wrapper/gradle-wrapper.jar
