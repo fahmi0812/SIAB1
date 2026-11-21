@@ -9,6 +9,12 @@ SIAB1 menggabungkan aplikasi kiosk Android, FastAPI untuk control/non-hot-path, 
 enam rute siswa (join, start, submit-answer, auto-save, auto-save-batch, submit), PostgreSQL,
 Redis, Celery, serta kontrol SEB/SXB. FastAPI tetap fallback Nginx untuk rute tersebut.
 
+Status: public repo, clean history (1 commit). No secrets, no student data.
+
+## What this repo is NOT
+
+This repo is not a demo with sample student data. Do not use it with real student data until your own deployment checklist in docs/ is complete.
+
 ## Kemampuan Utama
 
 - Aplikasi kiosk Android native dengan pembatasan navigasi, screenshot protection, dan origin-bound authentication.
@@ -105,9 +111,7 @@ cd android-kiosk
 
 ## Deployment
 
-Deployment production menggunakan `docker-compose.production.yml`. Database, image, dan Compose project memakai slug `siab1`. Hostname publik adalah `siab.man1rokanhulu.cloud`; SafeLine menangani ingress dan TLS sebelum meneruskan trafik ke origin Nginx yang hanya terikat ke loopback.
-
-Lihat [DEPLOYMENT.md](DEPLOYMENT.md). Jangan menjalankan rebuild, migrasi, atau penghapusan volume ketika asesmen aktif.
+Deployment production uses Docker Compose; see DEPLOYMENT.md for the runbook. Do not rebuild, migrate, or delete volumes while an assessment is active.
 
 ## Dokumentasi
 
